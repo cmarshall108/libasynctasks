@@ -149,7 +149,7 @@ cdef class Task(object):
                 # seems we cannot yet run this function,
                 # just return a cont so this task will be placed
                 # back in our schedulers queue...
-                return TASK_CONT
+                return TASK_WAIT
             else:
                 # update our current timestamp which will be the last
                 # time we executed our function, this will restart the timer...
@@ -260,7 +260,7 @@ class TaskScheduler(threading.Thread):
             if result == TASK_WAIT:
                 task.can_delay = True
             elif result == TASK_CONT:
-                pass
+                task.can_delay = False
             else:
                 # check to see if we got any other result than what we
                 # are expecting, tasks do not return values when they are called
