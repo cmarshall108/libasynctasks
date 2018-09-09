@@ -23,7 +23,7 @@ setup(
     ],
     author = 'Caleb Marshall',
     description = 'A fast, efficient task based system for concurrency.',
-    license = 'Apache',
+    license = 'BSD 3-Clause',
     keywords = 'cmake cython build',
     url = 'https://github.com/AnythingTechPro/libasynctasks',
     zip_safe = False
