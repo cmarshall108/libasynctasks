@@ -14,7 +14,7 @@ Please see the file 'readme.rst' for further instructions.""")
 
 
 setup(
-    name = "asynctasks",
+    name = "libasynctasks",
     package_dir = {
         '': 'src'
     },
@@ -25,6 +25,6 @@ setup(
     description = 'A fast, efficient task based system for concurrency.',
     license = 'Apache',
     keywords = 'cmake cython build',
-    url = 'https://github.com/AnythingTechPro/asynctasks',
+    url = 'https://github.com/AnythingTechPro/libasynctasks',
     zip_safe = False
 )
