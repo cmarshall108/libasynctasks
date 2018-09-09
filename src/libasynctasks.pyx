@@ -11,6 +11,11 @@ import collections
 
 
 ctypedef enum TaskResult:
+    """
+    An enum that defines the valid results in which a task
+    function can return to control the outcome of a task...
+    """
+
     TASK_DONE,
     TASK_WAIT,
     TASK_CONT
@@ -41,7 +46,11 @@ cdef class Task(object):
     cdef str _name
     cdef float _delay
     cdef bint _can_delay
+
+    # we have to define the timestamp as an object because,
+    # defining it as a float causes the variable to become static...
     cdef object _timestamp
+
     cdef object _function
     cdef tuple _args
     cdef dict _kwargs
@@ -217,9 +226,17 @@ class TaskScheduler(threading.Thread):
         return True
 
     def has_task(self, task):
+        """
+        Returns true if the task is in the queue else false.
+        """
+
         return task in self._task_queue
 
     def add_task(self, task):
+        """
+        Attemps to add the task object to the task queue...
+        """
+
         if not isinstance(task, Task):
             raise TaskError('Attempted to add task of invalid type <%r>!' % task)
 
@@ -229,15 +246,28 @@ class TaskScheduler(threading.Thread):
         self._task_queue.append(task)
 
     def remove_task(self, task):
+        """
+        Attempts to remove the task object from the task queue...
+        """
+
         if not self.has_task(task):
             raise TaskError('Cannot remove task <%s> task does not exist!' % task.name)
 
         self._task_queue.remove(task)
 
     def setup(self):
+        """
+        Sets up the task scheduler object, starting it's thread...
+        """
+
         threading.Thread.start(self)
 
     def update(self):
+        """
+        Called to execute our current queued tasks in the task queue,
+        handles the outcome of a task object by what it's function tells us to do...
+        """
+
         # check to see if we have any pending tasks in
         # the queue. This usually will not be the case but for
         # a few milliseconds from the time between when we initialize
@@ -439,6 +469,10 @@ cdef class TaskManager(object):
         scheduler.add_task(task)
 
     def run(self):
+        """
+        Run the task manager's main loop, this is blocking in the main thread...
+        """
+
         while True:
             try:
                 self.update()
