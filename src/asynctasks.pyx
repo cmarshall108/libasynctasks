@@ -30,18 +30,29 @@ cdef class Task(object):
 
     __slots__ = (
         '_name',
+        '_delay',
+        '_can_delay',
+        '_timestamp',
         '_function',
         '_args',
         '_kwargs'
     )
 
     cdef str _name
+    cdef float _delay
+    cdef bint _can_delay
+    cdef object _timestamp
     cdef object _function
     cdef tuple _args
     cdef dict _kwargs
 
-    def __init__(self, name, function, *args, **kwargs):
+    def __init__(self, name, delay, function, *args, **kwargs):
         self._name = name
+
+        self._delay = delay
+        self._can_delay = False
+        self._timestamp = self.get_timestamp()
+
         self._function = function
         self._args = args
         self._kwargs = kwargs
@@ -53,6 +64,22 @@ cdef class Task(object):
     @name.setter
     def name(self, name):
         self._name = name
+
+    @property
+    def delay(self):
+        return self._delay
+
+    @delay.setter
+    def delay(self, delay):
+        self._delay = delay
+
+    @property
+    def can_delay(self):
+        return self._can_delay
+
+    @can_delay.setter
+    def can_delay(self, can_delay):
+        self._can_delay = can_delay
 
     @property
     def function(self):
@@ -102,16 +129,41 @@ cdef class Task(object):
 
         return TASK_CONT
 
+    cdef object get_timestamp(self):
+        """
+        Returns a epoch timestamp rounded to the nearest hundredth...
+        """
+
+        return round(time.time(), 2)
+
     def run(self):
         """
         Attempt to execute the function provided on initialization,
         returning it's result to the scheduler.
         """
 
+        # check to see if we are able to run this task,
+        # check against the last timestamp and our delay...
+        if self._can_delay:
+            if self.get_timestamp() - self._timestamp < self._delay:
+                # seems we cannot yet run this function,
+                # just return a cont so this task will be placed
+                # back in our schedulers queue...
+                return TASK_CONT
+            else:
+                # update our current timestamp which will be the last
+                # time we executed our function, this will restart the timer...
+                self._timestamp = self.get_timestamp()
+
         return self._function(self, *self._args, **self._kwargs)
 
     def __del__(self):
         self._name = None
+
+        self._delay = 0
+        self._can_delay = False
+        self._timestamp = 0
+
         self._function = None
         self._args = None
         self._kwargs = None
@@ -204,21 +256,23 @@ class TaskScheduler(threading.Thread):
             # if the value is anything other than wait, cont then we assume
             # the task has been completed and we remove it...
             if result == TASK_DONE:
-                pass
+                continue
             if result == TASK_WAIT:
-                pass
+                task.can_delay = True
             elif result == TASK_CONT:
-                # the task want's to be placed back into the queue,
-                # instead of waiting for a new scheduler to be created,
-                # let's just add this task back to our own scheduler so we
-                # can save time between each execution...
-                self._task_queue.append(task)
+                pass
             else:
                 # check to see if we got any other result than what we
                 # are expecting, tasks do not return values when they are called
                 # like a normal function... So we should never expect this to be the case.
                 raise TaskError('Got invalid result <%r> when running task <%s>!' % (
                     result, task.name))
+
+            # the task want's to be placed back into the queue,
+            # instead of waiting for a new scheduler to be created,
+            # let's just add this task back to our own scheduler so we
+            # can save time between each execution...
+            self._task_queue.append(task)
 
         # finally let's check to see if we have any tasks remaining
         # in the task queue, if we do not; then this means we have
@@ -298,7 +352,7 @@ cdef class TaskManager(object):
             raise TaskError('Cannot add task <%s> with non callable function <%r>!' % (
                 name, function))
 
-        task = Task(name, function, *args, **kwargs)
+        task = Task(name, kwargs.pop('delay', 0), function, *args, **kwargs)
         self._task_queue.append(task)
 
         return task
@@ -349,8 +403,8 @@ cdef class TaskManager(object):
         if not self.has_scheduler(scheduler):
             raise TaskError('Cannot remove scheduler <%r> scheduler does not exist!' % scheduler)
 
-        scheduler.destroy()
         self._scheduler_queue.remove(scheduler)
+        scheduler.destroy()
         del scheduler
 
     cdef void update(self):
