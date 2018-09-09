@@ -240,8 +240,6 @@ class TaskScheduler(threading.Thread):
     def __del__(self):
         self._task_queue = None
 
-        super().__del__()
-
 
 cdef class TaskManager(object):
     """
