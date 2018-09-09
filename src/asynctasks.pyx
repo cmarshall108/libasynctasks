@@ -126,6 +126,12 @@ class TaskScheduler(threading.Thread):
     thread in the TaskManager pool...
     """
 
+    __slots__ = (
+        '_task_manager',
+        '_shutdown',
+        '_task_queue'
+    )
+
     def __init__(self, task_manager):
         self._task_manager = task_manager
 
