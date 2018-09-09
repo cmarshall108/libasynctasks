@@ -11,11 +11,6 @@ import collections
 
 
 ctypedef enum TaskResult:
-    """
-    An enum that defines the valid results in which a task
-    function can return to control the outcome of a task...
-    """
-
     TASK_DONE,
     TASK_WAIT,
     TASK_CONT
