@@ -42,4 +42,5 @@ task_manager.run()
 
 # License
 
-libasynctasks is licensed under the "MIT License" for more info, refer to the [LICENSE](LICENSE) file.
+libasynctasks is licensed under the "
+BSD 3-Clause License" for more info, refer to the [LICENSE](LICENSE) file.
