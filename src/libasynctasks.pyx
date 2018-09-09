@@ -429,7 +429,6 @@ cdef class TaskManager(object):
             raise TaskError('Cannot remove scheduler <%r> scheduler does not exist!' % scheduler)
 
         self._scheduler_queue.remove(scheduler)
-        scheduler.destroy()
         del scheduler
 
     cdef void update(self):
