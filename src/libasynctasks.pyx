@@ -282,7 +282,7 @@ class TaskScheduler(threading.Thread):
             # the task has been completed and we remove it...
             if result == TASK_DONE:
                 continue
-            if result == TASK_WAIT:
+            elif result == TASK_WAIT:
                 task.can_delay = True
             elif result == TASK_CONT:
                 task.can_delay = False
