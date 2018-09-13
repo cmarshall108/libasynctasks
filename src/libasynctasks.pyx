@@ -353,7 +353,7 @@ cdef class TaskManager(object):
         '_task_queue'
     )
 
-    cdef object _schedulers
+    cdef dict _schedulers
     cdef object _task_queue
 
     def __init__(self):
