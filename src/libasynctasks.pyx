@@ -3,11 +3,11 @@ A framework built to make concurrency fast, simple and dynamic;
 using the Task concept (and soon to support coroutines async/await...).
 """
 
-from cpython.exc cimport PyErr_CheckSignals
-
 import threading
 import time
 import collections
+
+include "_threading.pyx"
 
 
 ctypedef enum TaskResult:
@@ -503,10 +503,6 @@ cdef class TaskManager(object):
             except (KeyboardInterrupt, SystemExit):
                 break
 
-            # check for Python error signals so we can except
-            # errors like KeyboardInterrupt, SystemExit etc...
-            PyErr_CheckSignals()
-
             thread_wait()
 
         self.destroy()
@@ -516,12 +512,3 @@ cdef class TaskManager(object):
         self._task_queue = None
 
         super().__del__()
-
-
-cdef void thread_wait():
-    """
-    Wait for a short amount of time before executing anymore
-    code on the thread, this reduces overall idle CPU usage...
-    """
-
-    time.sleep(0.0001)
