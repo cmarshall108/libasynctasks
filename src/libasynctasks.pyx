@@ -15,6 +15,11 @@ ctypedef enum TaskResult:
     TASK_WAIT,
     TASK_CONT
 
+ctypedef enum TaskUsage:
+    TASK_USAGE_FULL = 100,
+    TASK_USAGE_LOAD = 50,
+    TASK_USAGE_LIGHT = 25
+
 
 class TaskError(RuntimeError):
     """
@@ -197,6 +202,10 @@ class TaskScheduler(threading.Thread):
         super().__init__(target=self.__run)
 
     @property
+    def name(self):
+        return '%s-%s' % (self.__class__.__name__, id(self))
+
+    @property
     def shutdown(self):
         return self._shutdown
 
@@ -211,6 +220,14 @@ class TaskScheduler(threading.Thread):
     @task_queue.setter
     def task_queue(self, task_queue):
         self._task_queue = task_queue
+
+    def __cmp__(self, other_scheduler):
+        """
+        Compares the number of running tasks in our queue against the other
+        scheduler's queue and returns the result...
+        """
+
+        return len(other_scheduler.task_queue) < len(self.task_queue)
 
     def _set_daemon(self):
         """
@@ -270,34 +287,33 @@ class TaskScheduler(threading.Thread):
         if not len(self._task_queue):
             return
 
-        for _ in xrange(len(self._task_queue)):
-            # retrieve a task object from the task queue,
-            # then let's execute it and figure out what it wants
-            # to be done with next...
-            task = self._task_queue.popleft()
-            result = task.run()
+        # retrieve a task object from the task queue,
+        # then let's execute it and figure out what it wants
+        # to be done with next...
+        task = self._task_queue.popleft()
+        result = task.run()
 
-            # check the result against the valid result values,
-            # if the value is anything other than wait, cont then we assume
-            # the task has been completed and we remove it...
-            if result == TASK_DONE:
-                continue
-            elif result == TASK_WAIT:
-                task.can_delay = True
-            elif result == TASK_CONT:
-                task.can_delay = False
-            else:
-                # check to see if we got any other result than what we
-                # are expecting, tasks do not return values when they are called
-                # like a normal function... So we should never expect this to be the case.
-                raise TaskError('Got invalid result <%r> when running task <%s>!' % (
-                    result, task.name))
+        # check the result against the valid result values,
+        # if the value is anything other than wait, cont then we assume
+        # the task has been completed and we remove it...
+        if result == TASK_DONE:
+            return
+        elif result == TASK_WAIT:
+            task.can_delay = True
+        elif result == TASK_CONT:
+            task.can_delay = False
+        else:
+            # check to see if we got any other result than what we
+            # are expecting, tasks do not return values when they are called
+            # like a normal function... So we should never expect this to be the case.
+            raise TaskError('Got invalid result <%r> when running task <%s>!' % (
+                result, task.name))
 
-            # the task want's to be placed back into the queue,
-            # instead of waiting for a new scheduler to be created,
-            # let's just add this task back to our own scheduler so we
-            # can save time between each execution...
-            self._task_queue.append(task)
+        # the task want's to be placed back into the queue,
+        # instead of waiting for a new scheduler to be created,
+        # let's just add this task back to our own scheduler so we
+        # can save time between each execution...
+        self._task_manager.task_queue.append(task)
 
         # finally let's check to see if we have any tasks remaining
         # in the task queue, if we do not; then this means we have
@@ -333,24 +349,24 @@ cdef class TaskManager(object):
     """
 
     __slots__ = (
-        '_scheduler_queue',
+        '_schedulers',
         '_task_queue'
     )
 
-    cdef object _scheduler_queue
+    cdef object _schedulers
     cdef object _task_queue
 
     def __init__(self):
-        self._scheduler_queue = collections.deque()
+        self._schedulers = {}
         self._task_queue = collections.deque()
 
     @property
     def scheduler_queue(self):
-        return self._scheduler_queue
+        return self._schedulers
 
     @scheduler_queue.setter
     def scheduler_queue(self, scheduler_queue):
-        self._scheduler_queue = scheduler_queue
+        self._schedulers = scheduler_queue
 
     @property
     def task_queue(self):
@@ -396,12 +412,12 @@ cdef class TaskManager(object):
         self._task_queue.remove(task)
         del task
 
-    def has_scheduler(self, scheduler):
+    def has_scheduler(self, scheduler_name):
         """
         Returns true if the scheduler exists in the queue else false.
         """
 
-        return scheduler in self._scheduler_queue
+        return scheduler_name in self._schedulers
 
     def add_scheduler(self, scheduler):
         """
@@ -411,10 +427,10 @@ cdef class TaskManager(object):
         if not isinstance(scheduler, TaskScheduler):
             raise TaskError('Cannot add scheduler of invalid type <%r>!' % scheduler)
 
-        if self.has_scheduler(scheduler):
+        if self.has_scheduler(scheduler.name):
             raise TaskError('Cannot add scheduler <%r> scheduler already exists!' % scheduler)
 
-        self._scheduler_queue.append(scheduler)
+        self._schedulers[scheduler.name] = scheduler
         scheduler.setup()
 
     def remove_scheduler(self, scheduler):
@@ -425,11 +441,36 @@ cdef class TaskManager(object):
         if not isinstance(scheduler, TaskScheduler):
             raise TaskError('Cannot remove scheduler of invalid type <%r>!' % scheduler)
 
-        if not self.has_scheduler(scheduler):
+        if not self.has_scheduler(scheduler.name):
             raise TaskError('Cannot remove scheduler <%r> scheduler does not exist!' % scheduler)
 
-        self._scheduler_queue.remove(scheduler)
+        del self._schedulers[scheduler.name]
         del scheduler
+
+    cdef object get_available_scheduler(self):
+        """
+        Attempts to find an scheduler in the dictionary that has the least
+        number of currently running tasks, if a scheduler is not found in the dictionary,
+        a new scheduler object is created and returned...
+        """
+
+        # check to see if we have an available scheduler that has a lower
+        # number of currently queued tasks than default constants specify...
+        available_scheduler = None
+        for scheduler in list(self._schedulers.values()):
+            if len(scheduler.task_queue) > TASK_USAGE_LIGHT:
+                continue
+
+            available_scheduler = scheduler
+            break
+
+        # if a scheduler is not currently available, let's assume they are all full,
+        # and create a new thread then add it to the pool.
+        if not available_scheduler:
+            available_scheduler = TaskScheduler(self)
+            self.add_scheduler(available_scheduler)
+
+        return available_scheduler
 
     cdef void update(self):
         """
@@ -446,20 +487,9 @@ cdef class TaskManager(object):
         # task object from the queue...
         task = self._task_queue.popleft()
 
-        # retrieve a scheduler to append this task to,
-        # if none are currently running, then let's create a new
-        # one and use that instead...
-        if not len(self._scheduler_queue):
-            scheduler = TaskScheduler(self)
-
-            # add the new task scheduler object to the task scheduler
-            # queue so we can reuse it...
-            self.add_scheduler(scheduler)
-        else:
-            scheduler = self._scheduler_queue.popleft()
-
-        # finally add the task to the schedulers queue
-        # object so it will be executed...
+        # get an available scheduler from the queue which has the least
+        # number of currently running tasks...
+        scheduler = self.get_available_scheduler()
         scheduler.add_task(task)
 
     def run(self):
@@ -482,7 +512,7 @@ cdef class TaskManager(object):
         self.destroy()
 
     def __del__(self):
-        self._scheduler_queue = None
+        self._schedulers = None
         self._task_queue = None
 
         super().__del__()
