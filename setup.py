@@ -6,10 +6,10 @@ from setuptools import setup
 from distutils.sysconfig import get_python_lib
 
 
-if os.path.exists('readme.rst'):
+if os.path.exists('README.md'):
     print("""The setup.py script should be executed from the build directory.
 
-Please see the file 'readme.rst' for further instructions.""")
+Please see the file 'README.md' for further instructions.""")
     sys.exit(1)
 
 
